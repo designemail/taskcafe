@@ -26,13 +26,14 @@ import {
 import QuickCardEditor from 'shared/components/QuickCardEditor';
 import ListActions from 'shared/components/ListActions';
 import MemberManager from 'shared/components/MemberManager';
-import SimpleLists from 'shared/components/Lists';
+import SimpleLists, { TaskStatus, TaskSince, TaskStatusFilter } from 'shared/components/Lists';
 import produce from 'immer';
 import MiniProfile from 'shared/components/MiniProfile';
 import DueDateManager from 'shared/components/DueDateManager';
 import EmptyBoard from 'shared/components/EmptyBoard';
 import NOOP from 'shared/utils/noop';
 import LabelManagerEditor from 'Projects/Project/LabelManagerEditor';
+import SortMenu from './Sort';
 
 const ProjectBar = styled.div`
   display: flex;
@@ -47,7 +48,7 @@ const ProjectActions = styled.div`
   align-items: center;
 `;
 
-const ProjectAction = styled.div<{ disabled?: boolean }>`
+const ProjectActionWrapper = styled.div<{ disabled?: boolean }>`
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -74,6 +75,25 @@ const ProjectActionText = styled.span`
   padding-left: 4px;
 `;
 
+type ProjectActionProps = {
+  onClick?: (target: React.RefObject<HTMLElement>) => void;
+  disabled?: boolean;
+};
+
+const ProjectAction: React.FC<ProjectActionProps> = ({ onClick, disabled = false, children }) => {
+  const $container = useRef<HTMLDivElement>(null);
+  const handleClick = () => {
+    if (onClick) {
+      onClick($container);
+    }
+  };
+  return (
+    <ProjectActionWrapper ref={$container} onClick={handleClick} disabled={disabled}>
+      {children}
+    </ProjectActionWrapper>
+  );
+};
+
 interface QuickCardEditorState {
   isOpen: boolean;
   target: React.RefObject<HTMLElement> | null;
@@ -99,7 +119,7 @@ export const BoardLoading = () => {
     <>
       <ProjectBar>
         <ProjectActions>
-          <ProjectAction disabled>
+          <ProjectAction>
             <CheckCircle width={13} height={13} />
             <ProjectActionText>All Tasks</ProjectActionText>
           </ProjectAction>
@@ -132,16 +152,21 @@ export const BoardLoading = () => {
   );
 };
 
+const initTaskStatusFilter: TaskStatusFilter = {
+  status: TaskStatus.ALL,
+  since: TaskSince.ALL,
+};
+
 const ProjectBoard: React.FC<ProjectBoardProps> = ({ projectID, onCardLabelClick, cardLabelVariant }) => {
   const [assignTask] = useAssignTaskMutation();
   const [unassignTask] = useUnassignTaskMutation();
-  const $labelsRef = useRef<HTMLDivElement>(null);
   const match = useRouteMatch();
   const labelsRef = useRef<Array<ProjectLabel>>([]);
   const { showPopup, hidePopup } = usePopup();
   const taskLabelsRef = useRef<Array<TaskLabel>>([]);
   const [quickCardEditor, setQuickCardEditor] = useState(initialQuickCardEditorState);
   const [updateTaskGroupLocation] = useUpdateTaskGroupLocationMutation({});
+  const [taskStatusFilter, setTaskStatusFilter] = useState(initTaskStatusFilter);
   const history = useHistory();
   const [deleteTaskGroup] = useDeleteTaskGroupMutation({
     update: (client, deletedTaskGroupData) => {
@@ -290,6 +315,15 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({ projectID, onCardLabelClick
   if (loading) {
     return <BoardLoading />;
   }
+  const getTaskStatusFilterLabel = (filter: TaskStatusFilter) => {
+    if (filter.status === TaskStatus.COMPLETE) {
+      return 'Complete';
+    }
+    if (filter.status === TaskStatus.INCOMPLETE) {
+      return 'Incomplete';
+    }
+    return 'All Tasks';
+  };
   if (data) {
     labelsRef.current = data.findProject.labels;
     const onQuickEditorOpen = ($target: React.RefObject<HTMLElement>, taskID: string, taskGroupID: string) => {
@@ -315,9 +349,25 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({ projectID, onCardLabelClick
       <>
         <ProjectBar>
           <ProjectActions>
-            <ProjectAction disabled>
+            <ProjectAction
+              onClick={target => {
+                showPopup(
+                  target,
+                  <Popup tab={0} title={null}>
+                    <SortMenu
+                      filter={taskStatusFilter}
+                      onChangeTaskStatusFilter={filter => {
+                        setTaskStatusFilter(filter);
+                        hidePopup();
+                      }}
+                    />
+                  </Popup>,
+                  185,
+                );
+              }}
+            >
               <CheckCircle width={13} height={13} />
-              <ProjectActionText>All Tasks</ProjectActionText>
+              <ProjectActionText>{getTaskStatusFilterLabel(taskStatusFilter)}</ProjectActionText>
             </ProjectAction>
             <ProjectAction disabled>
               <Filter width={13} height={13} />
@@ -330,8 +380,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({ projectID, onCardLabelClick
           </ProjectActions>
           <ProjectActions>
             <ProjectAction
-              ref={$labelsRef}
-              onClick={() => {
+              onClick={$labelsRef => {
                 showPopup(
                   $labelsRef,
                   <LabelManagerEditor
@@ -404,6 +453,7 @@ const ProjectBoard: React.FC<ProjectBoardProps> = ({ projectID, onCardLabelClick
             });
           }}
           taskGroups={data.findProject.taskGroups}
+          taskStatusFilter={taskStatusFilter}
           onCreateTask={onCreateTask}
           onCreateTaskGroup={onCreateList}
           onCardMemberClick={($targetRef, _taskID, memberID) => {

@@ -14,6 +14,40 @@ import moment from 'moment';
 
 import { Container, BoardContainer, BoardWrapper } from './Styles';
 
+export enum TaskStatus {
+  ALL,
+  COMPLETE,
+  INCOMPLETE,
+}
+
+export enum TaskSince {
+  ALL,
+  TODAY,
+  YESTERDAY,
+  ONE_WEEK,
+  TWO_WEEKS,
+  THREE_WEEKS,
+}
+
+export type TaskStatusFilter = {
+  status: TaskStatus;
+  since: TaskSince;
+};
+
+function shouldFilter(task: Task, filter: TaskStatusFilter) {
+  if (filter.status === TaskStatus.ALL) {
+    return true;
+  }
+
+  if (filter.status === TaskStatus.INCOMPLETE && task.complete === false) {
+    return true;
+  }
+  if (filter.status === TaskStatus.COMPLETE && task.complete === true) {
+    return true;
+  }
+  return false;
+}
+
 interface SimpleProps {
   taskGroups: Array<TaskGroup>;
   onTaskDrop: (task: Task, previousTaskGroupID: string) => void;
@@ -28,7 +62,13 @@ interface SimpleProps {
   onCardMemberClick: OnCardMemberClick;
   onCardLabelClick: () => void;
   cardLabelVariant: CardLabelVariant;
+  taskStatusFilter?: TaskStatusFilter;
 }
+
+const initTaskStatusFilter: TaskStatusFilter = {
+  status: TaskStatus.ALL,
+  since: TaskSince.ALL,
+};
 
 const SimpleLists: React.FC<SimpleProps> = ({
   taskGroups,
@@ -43,6 +83,7 @@ const SimpleLists: React.FC<SimpleProps> = ({
   cardLabelVariant,
   onExtraMenuOpen,
   onCardMemberClick,
+  taskStatusFilter = initTaskStatusFilter,
 }) => {
   const onDragEnd = ({ draggableId, source, destination, type }: DropResult) => {
     if (typeof destination === 'undefined') return;
@@ -164,6 +205,7 @@ const SimpleLists: React.FC<SimpleProps> = ({
                                 <ListCards ref={columnDropProvided.innerRef} {...columnDropProvided.droppableProps}>
                                   {taskGroup.tasks
                                     .slice()
+                                    .filter(t => shouldFilter(t, taskStatusFilter))
                                     .sort((a: any, b: any) => a.position - b.position)
                                     .map((task: Task, taskIndex: any) => {
                                       return (
